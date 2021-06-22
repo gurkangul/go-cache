@@ -20,26 +20,32 @@ type Value struct {
 	Value  string
 }
 
-func (s *Store) Set(key string, value string, exp int64) {
+func (s *Store) Set(key string, value string, exp int64) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	_, isOk := s.kv[key]
+	if isOk {
+		return fmt.Sprintf("%s already added", key), false
+	}
+
 	now := time.Now()
 	secs := now.Unix()
-	fmt.Println(s.kv)
-
 	if exp == 0 {
 		exp = defaultExp
 	}
 	s.kv[key] = &Value{Expire: secs + exp, Value: value}
-	fmt.Println(key, value, "----", s)
+	return "success", true
 }
 
-func (s *Store) Get(key string) *Value {
+func (s *Store) Get(key string) (*Value, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	fmt.Println(key)
-	return s.kv[key]
+	_, isOk := s.kv[key]
+	if isOk {
+		return s.kv[key], true
+	}
+	return nil, false
 }
 
 func New(checkTime int) *Store {
