@@ -12,7 +12,7 @@ import (
 
 const (
 	defaultExp   = 10
-	WriteTimeout = 1 * time.Second
+	WriteTimeout = 3 * time.Second
 )
 
 type Options struct {
@@ -66,8 +66,8 @@ func (s *Store) HandleStart() {
 	if port == "" {
 		port = "3030"
 	}
+	fmt.Println("Listen port : " + port)
 
-	os.Stderr.WriteString("Listen port : " + port)
 	router := http.NewServeMux()
 	server := &http.Server{
 		Addr:         ":" + port,
@@ -77,32 +77,25 @@ func (s *Store) HandleStart() {
 		IdleTimeout:  15 * time.Second,
 	}
 	router.HandleFunc("/set", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			fmt.Fprintf(w, "Method Not Allowed")
+			return
+		}
 		ctx, _ := context.WithTimeout(context.Background(), WriteTimeout)
 		worker, cancel := context.WithCancel(context.Background())
-		var buffer string
 		go func() {
 			// do something
-			time.Sleep(2 * time.Second)
-			buffer = "ready all response\n"
-			//do another
-			time.Sleep(2 * time.Second)
-			cancel()
-			fmt.Printf("worker finish\n")
-		}()
-		select {
-		case <-ctx.Done():
-			//add more friendly tips
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		case <-worker.Done():
 			keys, ok := req.URL.Query()["key"]
 			if !ok || len(keys[0]) < 1 {
 				fmt.Fprintf(w, "%s", "Url Param 'key' is missing")
+				cancel()
 				return
 			}
 			values, ok := req.URL.Query()["value"]
 			if !ok || len(values[0]) < 1 {
 				fmt.Fprintf(w, "%s", "Url Param 'value' is missing")
+				cancel()
 				return
 			}
 
@@ -111,10 +104,18 @@ func (s *Store) HandleStart() {
 			message, isOk := s.Set(key, value, 20)
 			if isOk == false {
 				fmt.Fprintf(w, message)
-
+				cancel()
+				return
 			}
-			fmt.Println(buffer)
 			fmt.Fprintf(w, "Key :%s , Value :%s", key, value)
+			cancel()
+		}()
+		select {
+		case <-ctx.Done():
+			//add more friendly tips
+			w.WriteHeader(http.StatusGatewayTimeout)
+			return
+		case <-worker.Done():
 			return
 		}
 
