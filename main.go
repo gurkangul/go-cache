@@ -7,11 +7,15 @@ import (
 
 var cache = New(&Options{CheckTime: 1})
 
-func main() {
-	go cache.CheckExpired()
+func init() {
 	http.HandleFunc("/set", setStore)
 	http.HandleFunc("/get", getStore)
 	http.ListenAndServe(":3030", nil)
+}
+
+func main() {
+	go cache.CheckExpired()
+
 }
 
 func setStore(w http.ResponseWriter, req *http.Request) {
