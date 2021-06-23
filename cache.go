@@ -30,6 +30,9 @@ func (s *Store) Set(key string, value string, exp int64) (string, bool) {
 	defer s.mu.Unlock()
 
 	_, isOk := s.kv[key]
+	os.Stderr.WriteString("added: " + fmt.Sprintf("%v", isOk))
+
+	fmt.Println(isOk)
 	if isOk {
 		return fmt.Sprintf("%s already added", key), false
 	}
