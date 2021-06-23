@@ -8,9 +8,7 @@ import (
 var cache = New(&Options{CheckTime: 1})
 
 func init() {
-	http.HandleFunc("/set", setStore)
-	http.HandleFunc("/get", getStore)
-	http.ListenAndServe(":3030", nil)
+
 }
 
 func main() {

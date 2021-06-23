@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -54,6 +55,12 @@ func (s *Store) Get(key string) (*Value, bool) {
 func New(opt *Options) *Store {
 	store := make(map[string]*Value)
 	return &Store{kv: store, checkTime: opt.CheckTime}
+}
+
+func HandleStart() {
+	http.HandleFunc("/set", setStore)
+	http.HandleFunc("/get", getStore)
+	http.ListenAndServe(":3030", nil)
 }
 
 func (s *Store) CheckExpired() {
