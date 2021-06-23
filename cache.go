@@ -10,6 +10,9 @@ const (
 	defaultExp = 10
 )
 
+type Options struct {
+	CheckTime int
+}
 type Store struct {
 	mu        sync.Mutex
 	checkTime int
@@ -48,9 +51,9 @@ func (s *Store) Get(key string) (*Value, bool) {
 	return nil, false
 }
 
-func New(checkTime int) *Store {
+func New(opt *Options) *Store {
 	store := make(map[string]*Value)
-	return &Store{kv: store, checkTime: checkTime}
+	return &Store{kv: store, checkTime: opt.CheckTime}
 }
 
 func (s *Store) CheckExpired() {

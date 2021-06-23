@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-var cache = New(1)
+var cache = New(&Options{CheckTime: 1})
 
 func main() {
 	go cache.CheckExpired()
