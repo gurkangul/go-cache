@@ -3,6 +3,7 @@ package cache
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -52,15 +53,51 @@ func (s *Store) Get(key string) (*Value, bool) {
 	return nil, false
 }
 
-func New(opt *Options) *Store {
-	store := make(map[string]*Value)
-	return &Store{kv: store, checkTime: opt.CheckTime}
-}
+func (s *Store) HandleStart() {
+	port := os.Getenv("PORT")
+	http.HandleFunc("/set", func(w http.ResponseWriter, req *http.Request) {
+		keys, ok := req.URL.Query()["key"]
+		if !ok || len(keys[0]) < 1 {
+			fmt.Fprintf(w, "%s", "Url Param 'key' is missing")
+			return
+		}
+		values, ok := req.URL.Query()["value"]
+		if !ok || len(values[0]) < 1 {
+			fmt.Fprintf(w, "%s", "Url Param 'value' is missing")
+			return
+		}
 
-func HandleStart() {
-	http.HandleFunc("/set", setStore)
-	http.HandleFunc("/get", getStore)
-	http.ListenAndServe(":3030", nil)
+		key := keys[0]
+		value := values[0]
+		s.Set(key, value, 20)
+		fmt.Fprintf(w, "Key :%s , Value :%s", key, value)
+	})
+	http.HandleFunc("/get", func(w http.ResponseWriter, req *http.Request) {
+		key, ok := req.URL.Query()["key"]
+
+		if !ok || len(key[0]) < 1 {
+			fmt.Fprintf(w, "%s", "Url Param 'key' is missing")
+			return
+		}
+		searchKey := string(key[0])
+		foundValue, _ := s.Get(searchKey)
+		if foundValue == nil {
+			fmt.Fprintf(w, "%s", "Found nothing")
+			return
+		}
+		fmt.Printf("%#v \n", foundValue)
+		fmt.Printf("%d \n", len(s.kv))
+		fmt.Printf("%#v", s)
+		fmt.Fprintf(w, "%s", foundValue)
+
+	})
+
+	if port == "" {
+		port = "3030"
+	}
+
+	os.Stderr.WriteString("Listen port : " + port)
+	http.ListenAndServe(":"+port, nil)
 }
 
 func (s *Store) CheckExpired() {
@@ -77,4 +114,9 @@ func (s *Store) CheckExpired() {
 			}
 		}
 	}
+}
+
+func New(opt *Options) *Store {
+	store := make(map[string]*Value)
+	return &Store{kv: store, checkTime: opt.CheckTime}
 }
