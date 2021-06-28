@@ -3,10 +3,11 @@ package cache
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -22,6 +23,7 @@ var (
 	isLog              = false
 	isHandle           = false
 	defaultWriteSecond = 5
+	timeout            = time.Duration(2 * time.Second)
 )
 
 type Options struct {
@@ -42,12 +44,12 @@ type value struct {
 	Writed bool
 }
 
-func (s *store) Set(k string, v string, exp int64) (string, bool) {
+func (s *store) set(k string, v string, exp int64) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	_, isOk := s.kv[k]
-	if isOk == true {
+	if isOk {
 		return fmt.Sprintf("%s already added", k), false
 	}
 
@@ -60,7 +62,7 @@ func (s *store) Set(k string, v string, exp int64) (string, bool) {
 	return "success", true
 }
 
-func (s *store) Get(key string) (*value, bool) {
+func (s *store) get(key string) (*value, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, isOk := s.kv[key]
@@ -70,11 +72,6 @@ func (s *store) Get(key string) (*value, bool) {
 	return nil, false
 }
 
-var timeout = time.Duration(2 * time.Second)
-
-func dialTimeout(network, addr string) (net.Conn, error) {
-	return net.DialTimeout(network, addr, timeout)
-}
 func (s *store) handleStart() {
 
 	fmt.Println("Listen port : " + currentPort)
@@ -112,9 +109,9 @@ func (s *store) handleStart() {
 
 			key := keys[0]
 			value := values[0]
-			message, isOk := s.Set(key, value, 20)
-			if isOk == false {
-				fmt.Fprintf(w, message)
+			message, isOk := s.set(key, value, 20)
+			if !isOk {
+				fmt.Fprintf(w, "%s", message)
 				cancel()
 				return
 			}
@@ -132,6 +129,11 @@ func (s *store) handleStart() {
 
 	})
 	router.HandleFunc("/get", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			fmt.Fprintf(w, "Method Not Allowed")
+			return
+		}
 		key, ok := req.URL.Query()["key"]
 
 		if !ok || len(key[0]) < 1 {
@@ -139,7 +141,7 @@ func (s *store) handleStart() {
 			return
 		}
 		searchKey := string(key[0])
-		foundValue, _ := s.Get(searchKey)
+		foundValue, _ := s.get(searchKey)
 		if foundValue == nil {
 			fmt.Fprintf(w, "%s", "Found nothing")
 			return
@@ -183,6 +185,18 @@ func (s *store) Run() {
 
 	go s.checkExpired()
 
+	sigs := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigs
+		fmt.Println()
+		fmt.Println(sig)
+		done <- true
+	}()
+
+	<-done
 }
 
 func New(opt *Options) *store {
