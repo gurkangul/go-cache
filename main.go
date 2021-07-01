@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -115,10 +116,15 @@ func (s *store) handleStart() {
 				cancel()
 				return
 			}
+			exp, ok := req.URL.Query()["expiration"]
+			expTime := 0
+			if ok {
+				expTime, _ = strconv.Atoi(exp[0])
+			}
 
 			key := keys[0]
 			value := values[0]
-			message, isOk := s.set(key, value, 20)
+			message, isOk := s.set(key, value, int64(expTime))
 			if !isOk {
 				// fmt.Fprintf(w, "%s", message)
 				resp.Message = message
