@@ -14,7 +14,7 @@ import (
 const (
 	fileLocation = "./log/"
 	fileMode     = 777
-	defaultExp   = 10
+	defaultExp   = 60
 )
 
 var (
@@ -22,6 +22,7 @@ var (
 	isLog              = false
 	defaultWriteSecond = 5
 	timeout            = time.Duration(2 * time.Second)
+	timeFormat         = time.RFC3339
 )
 
 type Response struct {
@@ -100,7 +101,6 @@ func (s *store) handleStart() {
 			// do something
 			keys, ok := req.URL.Query()["key"]
 			if !ok || len(keys[0]) < 1 {
-				// fmt.Fprintf(w, "%s", "Url Param 'key' is missing")
 				resp.Message = "Url Param 'key' is missing"
 				resp.Success = false
 				json.NewEncoder(w).Encode(resp)
@@ -109,7 +109,6 @@ func (s *store) handleStart() {
 			}
 			values, ok := req.URL.Query()["value"]
 			if !ok || len(values[0]) < 1 {
-				// fmt.Fprintf(w, "%s", "Url Param 'value' is missing")
 				resp.Message = "Url Param 'value' is missing"
 				resp.Success = false
 				json.NewEncoder(w).Encode(resp)
@@ -126,7 +125,6 @@ func (s *store) handleStart() {
 			value := values[0]
 			message, isOk := s.set(key, value, int64(expTime))
 			if !isOk {
-				// fmt.Fprintf(w, "%s", message)
 				resp.Message = message
 				resp.Success = false
 				json.NewEncoder(w).Encode(resp)
@@ -134,14 +132,12 @@ func (s *store) handleStart() {
 				return
 			}
 
-			// fmt.Fprintf(w, "Key :%s , Value :%s", key, value)
 			resp = &Response{Message: "success", Result: s.kv[key], Success: true}
 			json.NewEncoder(w).Encode(resp)
 			cancel()
 		}()
 		select {
 		case <-ctx.Done():
-			//add more friendly tips
 			w.WriteHeader(http.StatusGatewayTimeout)
 			return
 		case <-worker.Done():
@@ -159,7 +155,6 @@ func (s *store) handleStart() {
 		ctx, _ := context.WithTimeout(context.Background(), timeout)
 		worker, cancel := context.WithCancel(context.Background())
 		go func() {
-			// do something
 			resp := &Response{}
 
 			key, ok := req.URL.Query()["key"]
@@ -168,6 +163,7 @@ func (s *store) handleStart() {
 				resp.Message = "Url Param 'key' is missing"
 				resp.Success = false
 				json.NewEncoder(w).Encode(resp)
+				cancel()
 				return
 			}
 			searchKey := string(key[0])
@@ -176,6 +172,7 @@ func (s *store) handleStart() {
 				resp.Message = "Found nothing"
 				resp.Success = false
 				json.NewEncoder(w).Encode(resp)
+				cancel()
 				return
 			}
 			resp = &Response{Message: "success", Result: s.kv[searchKey], Success: true}
@@ -247,8 +244,13 @@ func New(opt *Options) *store {
 		defaultWriteSecond = opt.WriteTime
 	}
 
+	checkT := 1
+	if opt.CheckTime != 0 {
+		checkT = opt.CheckTime
+	}
+
 	s := make(map[string]*value)
-	return &store{kv: s, checkTime: opt.CheckTime}
+	return &store{kv: s, checkTime: checkT}
 }
 
 func (s *store) writeToFile() {
@@ -276,9 +278,8 @@ func (s *store) writeToFile() {
 
 			if len(s.kv) > 0 {
 				for k, v := range s.kv {
-					fmt.Println(k, v, t)
 					if !v.Writed {
-						kv := fmt.Sprintf("%s --> %s ", k, v.Value)
+						kv := fmt.Sprintf("%s --> %s = %s ", t.Format(timeFormat), k, v.Value)
 						_, err = logFile.WriteString(kv + "\n")
 						if err != nil {
 							fmt.Println("writing log failed")
