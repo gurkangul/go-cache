@@ -94,8 +94,8 @@ func (s *store) handleStart() {
 			fmt.Fprintf(w, "Method Not Allowed")
 			return
 		}
-		ctx, _ := context.WithTimeout(context.Background(), timeout)
-		worker, cancel := context.WithCancel(context.Background())
+		// ctxx, _ := context.WithTimeout(context.Background(), time.Second*3)
+		ctx, cancel := context.WithCancel(req.Context())
 		go func() {
 			resp := &Response{}
 			// do something
@@ -138,10 +138,11 @@ func (s *store) handleStart() {
 		}()
 		select {
 		case <-ctx.Done():
-			w.WriteHeader(http.StatusGatewayTimeout)
 			return
-		case <-worker.Done():
+		case <-time.After(time.Second * timeout):
+			fmt.Println("Timeout")
 			return
+			// json.NewEncoder(w).Encode("sss")
 		}
 
 	})
@@ -152,8 +153,8 @@ func (s *store) handleStart() {
 			fmt.Fprintf(w, "Method Not Allowed")
 			return
 		}
-		ctx, _ := context.WithTimeout(context.Background(), timeout)
-		worker, cancel := context.WithCancel(context.Background())
+		// ctx, _ := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithCancel(req.Context())
 		go func() {
 			resp := &Response{}
 
@@ -181,10 +182,12 @@ func (s *store) handleStart() {
 		}()
 		select {
 		case <-ctx.Done():
-			w.WriteHeader(http.StatusGatewayTimeout)
+			// w.WriteHeader(http.StatusGatewayTimeout)
 			return
-		case <-worker.Done():
+		case <-time.After(time.Second * timeout):
+			fmt.Println("Timeout")
 			return
+			// json.NewEncoder(w).Encode("sss")
 		}
 
 	})
