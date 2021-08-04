@@ -25,6 +25,7 @@ var (
 	timeFormat         = time.RFC3339
 )
 
+// Response is http response
 type Response struct {
 	Message string      `json:"message"`
 	Result  interface{} `json:"result"`
@@ -89,7 +90,7 @@ func (s *store) handleStart() {
 	}
 	router.HandleFunc("/set", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if req.Method != http.MethodGet {
+		if req.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			fmt.Fprintf(w, "Method Not Allowed")
 			return
