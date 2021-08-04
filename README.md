@@ -41,7 +41,7 @@ func main() {
 }
 ```
 
-### set
+### set (POST request)
 
 ```bash
 http://localhost:3030/set?key=foo&value=bar&expiration=60
@@ -86,7 +86,7 @@ http://localhost:3030/set?key=foo&value=bar&expiration=60
 }
 ```
 
-### get
+### get (GET request)
 
 ```bash
 http://localhost:3030/set?key=foo
