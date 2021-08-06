@@ -1,7 +1,6 @@
 package cache
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,7 +17,7 @@ const (
 )
 
 var (
-	currentPort        = "3030"
+	defaultPort        = "3030"
 	isLog              = false
 	defaultWriteSecond = 5
 	timeout            = time.Duration(2 * time.Second)
@@ -78,72 +77,71 @@ func (s *store) get(key string) (*value, bool) {
 
 func (s *store) handleStart() {
 
-	fmt.Println("Listen port : " + currentPort)
+	fmt.Println("Listen port : " + defaultPort)
 
 	router := http.NewServeMux()
 	server := &http.Server{
-		Addr:         ":" + currentPort,
-		Handler:      router,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: timeout + 10*time.Millisecond, //10ms Redundant time
-		IdleTimeout:  15 * time.Second,
+		Addr:           ":" + defaultPort,
+		Handler:        router,
+		ReadTimeout:    2 * time.Second,
+		WriteTimeout:   timeout + 10*time.Millisecond, //10ms Redundant time
+		IdleTimeout:    15 * time.Second,
+		MaxHeaderBytes: 1 * 1024 * 1024,
 	}
 	router.HandleFunc("/set", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		fmt.Println(req.Method)
 		if req.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			fmt.Fprintf(w, "Method Not Allowed")
 			return
 		}
-		// ctxx, _ := context.WithTimeout(context.Background(), time.Second*3)
-		ctx, cancel := context.WithCancel(req.Context())
-		go func() {
-			resp := &Response{}
-			// do something
-			keys, ok := req.URL.Query()["key"]
-			if !ok || len(keys[0]) < 1 {
-				resp.Message = "Url Param 'key' is missing"
-				resp.Success = false
-				json.NewEncoder(w).Encode(resp)
-				cancel()
-				return
-			}
-			values, ok := req.URL.Query()["value"]
-			if !ok || len(values[0]) < 1 {
-				resp.Message = "Url Param 'value' is missing"
-				resp.Success = false
-				json.NewEncoder(w).Encode(resp)
-				cancel()
-				return
-			}
-			exp, ok := req.URL.Query()["expiration"]
-			expTime := 0
-			if ok {
-				expTime, _ = strconv.Atoi(exp[0])
-			}
 
-			key := keys[0]
-			value := values[0]
-			message, isOk := s.set(key, value, int64(expTime))
-			if !isOk {
-				resp.Message = message
-				resp.Success = false
-				json.NewEncoder(w).Encode(resp)
-				cancel()
-				return
+		resp := &Response{}
+		// do something
+		keys, ok := req.URL.Query()["key"]
+		if !ok || len(keys[0]) < 1 {
+			resp.Message = "Url Param 'key' is missing"
+			resp.Success = false
+			err := json.NewEncoder(w).Encode(resp)
+			if err != nil {
+				fmt.Println(err)
 			}
+			return
+		}
+		values, ok := req.URL.Query()["value"]
+		if !ok || len(values[0]) < 1 {
+			resp.Message = "Url Param 'value' is missing"
+			resp.Success = false
+			err := json.NewEncoder(w).Encode(resp)
+			if err != nil {
+				fmt.Println(err)
+			}
+			return
+		}
+		exp, ok := req.URL.Query()["expiration"]
+		expTime := 0
+		if ok {
+			expTime, _ = strconv.Atoi(exp[0])
+		}
 
-			resp = &Response{Message: "success", Result: s.kv[key], Success: true}
-			json.NewEncoder(w).Encode(resp)
-			cancel()
-		}()
-		select {
-		case <-ctx.Done():
+		key := keys[0]
+		value := values[0]
+		message, ok := s.set(key, value, int64(expTime))
+		if !ok {
+			resp.Message = message
+			resp.Success = false
+			err := json.NewEncoder(w).Encode(resp)
+			if err != nil {
+				fmt.Println(err)
+			}
 			return
-		case <-time.After(time.Second * timeout):
-			fmt.Println("Timeout")
-			return
-			// json.NewEncoder(w).Encode("sss")
+		}
+
+		resp = &Response{Message: "success", Result: s.kv[key], Success: true}
+		err := json.NewEncoder(w).Encode(resp)
+		if err != nil {
+			fmt.Println(err)
 		}
 
 	})
@@ -154,41 +152,34 @@ func (s *store) handleStart() {
 			fmt.Fprintf(w, "Method Not Allowed")
 			return
 		}
-		// ctx, _ := context.WithTimeout(context.Background(), timeout)
-		ctx, cancel := context.WithCancel(req.Context())
-		go func() {
-			resp := &Response{}
+		resp := &Response{}
 
-			key, ok := req.URL.Query()["key"]
+		key, ok := req.URL.Query()["key"]
 
-			if !ok || len(key[0]) < 1 {
-				resp.Message = "Url Param 'key' is missing"
-				resp.Success = false
-				json.NewEncoder(w).Encode(resp)
-				cancel()
-				return
+		if !ok || len(key[0]) < 1 {
+			resp.Message = "Url Param 'key' is missing"
+			resp.Success = false
+			err := json.NewEncoder(w).Encode(resp)
+			if err != nil {
+				fmt.Println(err)
 			}
-			searchKey := string(key[0])
-			foundValue, _ := s.get(searchKey)
-			if foundValue == nil {
-				resp.Message = "Found nothing"
-				resp.Success = false
-				json.NewEncoder(w).Encode(resp)
-				cancel()
-				return
+			return
+		}
+		searchKey := string(key[0])
+		foundValue, _ := s.get(searchKey)
+		if foundValue == nil {
+			resp.Message = "Found nothing"
+			resp.Success = false
+			err := json.NewEncoder(w).Encode(resp)
+			if err != nil {
+				fmt.Println(err)
 			}
-			resp = &Response{Message: "success", Result: s.kv[searchKey], Success: true}
-			json.NewEncoder(w).Encode(resp)
-			cancel()
-		}()
-		select {
-		case <-ctx.Done():
-			// w.WriteHeader(http.StatusGatewayTimeout)
 			return
-		case <-time.After(time.Second * timeout):
-			fmt.Println("Timeout")
-			return
-			// json.NewEncoder(w).Encode("sss")
+		}
+		resp = &Response{Message: "success", Result: s.kv[searchKey], Success: true}
+		err := json.NewEncoder(w).Encode(resp)
+		if err != nil {
+			fmt.Println(err)
 		}
 
 	})
@@ -237,7 +228,7 @@ func (s *store) Run() {
 
 func New(opt *Options) *store {
 	if opt.Port != "" {
-		currentPort = opt.Port
+		defaultPort = opt.Port
 	}
 
 	if opt.IsLog != isLog {
