@@ -3,8 +3,10 @@ package cache
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"sync"
 	"time"
@@ -13,14 +15,14 @@ import (
 const (
 	fileLocation = "./log/"
 	fileMode     = 777
-	defaultExp   = 60
+	defaultExp   = 60 // second
 )
 
 var (
 	defaultPort        = "3030"
-	isLog              = false
+	isLog              = false //hasFileOutput
 	defaultWriteSecond = 5
-	timeout            = time.Duration(2 * time.Second)
+	timeout            = time.Duration(5 * time.Second)
 	timeFormat         = time.RFC3339
 )
 
@@ -30,23 +32,30 @@ type Response struct {
 	Result  interface{} `json:"result"`
 	Success bool        `json:"success"`
 }
+
+// Options is initialize app options
 type Options struct {
 	CheckTime int
 	Port      string
 	IsLog     bool
 	WriteTime int
 }
+
+//store
 type store struct {
 	mu        sync.Mutex
 	checkTime int
 	kv        map[string]*value
 }
+
+//value
 type value struct {
 	Expire int64
 	Value  string
 	Writed bool
 }
 
+//set key-value in memory
 func (s *store) set(k string, v string, exp int64) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -65,6 +74,7 @@ func (s *store) set(k string, v string, exp int64) (string, bool) {
 	return "success", true
 }
 
+//get key-value from memory
 func (s *store) get(key string) (*value, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -75,6 +85,7 @@ func (s *store) get(key string) (*value, bool) {
 	return nil, false
 }
 
+//handleStart
 func (s *store) handleStart() {
 
 	fmt.Println("Listen port : " + defaultPort)
@@ -139,6 +150,7 @@ func (s *store) handleStart() {
 		}
 
 		resp = &Response{Message: "success", Result: s.kv[key], Success: true}
+		w.WriteHeader(http.StatusCreated)
 		err := json.NewEncoder(w).Encode(resp)
 		if err != nil {
 			fmt.Println(err)
@@ -177,6 +189,7 @@ func (s *store) handleStart() {
 			return
 		}
 		resp = &Response{Message: "success", Result: s.kv[searchKey], Success: true}
+
 		err := json.NewEncoder(w).Encode(resp)
 		if err != nil {
 			fmt.Println(err)
@@ -184,14 +197,22 @@ func (s *store) handleStart() {
 
 	})
 
-	server.ListenAndServe()
+	err := server.ListenAndServe()
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
-func (s *store) checkExpired() {
+// check expired time key-value items
+func (s *store) checkExpired(cc chan bool) {
 	ticker := time.NewTicker(time.Second * time.Duration(s.checkTime))
 	defer ticker.Stop()
+	defer close(cc)
 	for {
 		select {
+		case <-cc:
+			log.Println("check expired close signal")
+			return
 		case t := <-ticker.C:
 			for k, v := range s.kv {
 				if t.Unix() > v.Expire {
@@ -202,28 +223,48 @@ func (s *store) checkExpired() {
 	}
 }
 
+// Application Run
 func (s *store) Run() {
-
+	log.Println("application running")
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	ww := make(chan bool)
 	if isLog {
-		go s.writeToFile()
+		// channel stop writing
+		go s.writeToFile(ww)
 	}
 
-	go s.checkExpired()
+	cc := make(chan bool)
+	go s.checkExpired(cc)
 
-	// sigs := make(chan os.Signal, 1)
-	// done := make(chan bool, 1)
-	// signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go s.handleStart()
 
-	// go func() {
-	// 	sig := <-sigs
-	// 	fmt.Println()
-	// 	fmt.Println(sig)
-	// 	done <- true
-	// }()
+	select {
+	case <-c:
+		log.Println("interupt signal received")
 
-	// <-done
-	s.handleStart()
+	}
 
+	if isLog {
+		log.Println("stop writing...")
+		ww <- false
+		//wait until stop signal channel is closed (goroutine is finished)
+		<-ww
+		log.Println("stop writing channel closed")
+	} else {
+		close(ww)
+		log.Println("empty channel closed")
+	}
+
+	log.Println("stop check sent")
+	cc <- false
+	//wait until stop signal channel is closed (goroutine is finished)
+	<-cc
+	log.Println("stop check channel closed")
+
+	close(c)
+	log.Println("interupt signal channel closed")
+	log.Println("application stopped")
 }
 
 func New(opt *Options) *store {
@@ -248,14 +289,20 @@ func New(opt *Options) *store {
 	return &store{kv: s, checkTime: checkT}
 }
 
-func (s *store) writeToFile() {
+func (s *store) writeToFile(ww chan bool) {
+
 	timestamp := fmt.Sprintf("%v", time.Now().Unix())
 	logFile, err := os.OpenFile(fileLocation+timestamp+".txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, fileMode)
 
 	ticker := time.NewTicker(time.Second * time.Duration(defaultWriteSecond))
 	defer ticker.Stop()
+	defer close(ww)
+
 	for {
 		select {
+		case <-ww:
+			log.Println("writing close signal")
+			return
 		case t := <-ticker.C:
 			s.mu.Lock()
 			if err != nil {

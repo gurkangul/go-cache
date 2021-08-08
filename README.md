@@ -49,7 +49,7 @@ http://localhost:3030/set?key=foo&value=bar&expiration=60
 
 > Default expiration time is 60 second.(optional). You have to use key and value
 
-#### Response
+#### Response (Status=201)
 
 ```go
 {
