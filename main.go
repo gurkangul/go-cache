@@ -289,6 +289,7 @@ func New(opt *Options) *store {
 	return &store{kv: s, checkTime: checkT}
 }
 
+//writeToFile --> writing to file
 func (s *store) writeToFile(ww chan bool) {
 
 	timestamp := fmt.Sprintf("%v", time.Now().Unix())
